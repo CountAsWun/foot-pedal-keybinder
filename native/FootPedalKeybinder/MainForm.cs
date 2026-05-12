@@ -7,6 +7,7 @@ internal sealed class MainForm : Form
     private readonly Label _deviceStatus = new();
     private readonly Label _bindingStatus = new();
     private readonly Button _refreshButton = new();
+    private readonly Button _readButton = new();
     private readonly Button _captureButton = new();
     private readonly Button _writeButton = new();
     private readonly TextBox _logBox = new();
@@ -63,6 +64,11 @@ internal sealed class MainForm : Form
         _refreshButton.AutoSize = true;
         _refreshButton.Click += (_, _) => RefreshDevices();
 
+        _readButton.Text = "Read Slots";
+        _readButton.AutoSize = true;
+        _readButton.Enabled = false;
+        _readButton.Click += (_, _) => ReadSlots();
+
         _captureButton.Text = "Capture Key";
         _captureButton.AutoSize = true;
         _captureButton.Click += (_, _) => StartCapture();
@@ -72,7 +78,7 @@ internal sealed class MainForm : Form
         _writeButton.Enabled = false;
         _writeButton.Click += (_, _) => WriteBinding();
 
-        buttons.Controls.AddRange([_refreshButton, _captureButton, _writeButton]);
+        buttons.Controls.AddRange([_refreshButton, _readButton, _captureButton, _writeButton]);
 
         _logBox.Dock = DockStyle.Fill;
         _logBox.Multiline = true;
@@ -174,6 +180,10 @@ internal sealed class MainForm : Form
             {
                 Log(result);
             }
+            foreach (var result in _selectedDevice.ReadSlots())
+            {
+                Log(result);
+            }
             Log($"Wrote {_pendingBinding.Display} to slots 1-3. Unplug and replug the pedal, then test it.");
         }
         catch (Exception ex)
@@ -184,7 +194,28 @@ internal sealed class MainForm : Form
 
     private void UpdateWriteState()
     {
+        _readButton.Enabled = _selectedDevice is not null;
         _writeButton.Enabled = _selectedDevice is not null && _pendingBinding is not null;
+    }
+
+    private void ReadSlots()
+    {
+        if (_selectedDevice is null)
+        {
+            return;
+        }
+
+        try
+        {
+            foreach (var result in _selectedDevice.ReadSlots())
+            {
+                Log(result);
+            }
+        }
+        catch (Exception ex)
+        {
+            Log($"Read failed: {ex.Message}");
+        }
     }
 
     private void Log(string message)
