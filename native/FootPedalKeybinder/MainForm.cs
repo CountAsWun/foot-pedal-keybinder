@@ -169,7 +169,11 @@ internal sealed class MainForm : Form
 
         try
         {
-            _selectedDevice.WriteAllSlots(_pendingBinding);
+            var writeResults = _selectedDevice.WriteAllSlots(_pendingBinding);
+            foreach (var result in writeResults)
+            {
+                Log(result);
+            }
             Log($"Wrote {_pendingBinding.Display} to slots 1-3. Unplug and replug the pedal, then test it.");
         }
         catch (Exception ex)
