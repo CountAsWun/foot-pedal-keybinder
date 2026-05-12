@@ -154,15 +154,17 @@ internal sealed class MainForm : Form
         UpdateWriteState();
     }
 
-    private void WriteBinding()
+    private async void WriteBinding()
     {
-        if (_selectedDevice is null || _pendingBinding is null)
+        var selectedDevice = _selectedDevice;
+        var pendingBinding = _pendingBinding;
+        if (selectedDevice is null || pendingBinding is null)
         {
             return;
         }
 
         var confirm = MessageBox.Show(
-            $"Write {_pendingBinding.Display} to all internal slots on the connected FS2007U1SW?",
+            $"Write {pendingBinding.Display} to all internal slots on the connected FS2007U1SW?",
             "Confirm persistent write",
             MessageBoxButtons.OKCancel,
             MessageBoxIcon.Warning);
@@ -175,20 +177,25 @@ internal sealed class MainForm : Form
 
         try
         {
-            var writeResults = _selectedDevice.WriteAllSlots(_pendingBinding);
+            SetBusy(true);
+            var writeResults = await Task.Run(() => selectedDevice.WriteAllSlots(pendingBinding));
             foreach (var result in writeResults)
             {
                 Log(result);
             }
-            foreach (var result in _selectedDevice.ReadSlots())
+            foreach (var result in await Task.Run(selectedDevice.ReadSlots))
             {
                 Log(result);
             }
-            Log($"Wrote {_pendingBinding.Display} to slots 1-3. Unplug and replug the pedal, then test it.");
+            Log($"Wrote {pendingBinding.Display} to slots 1-3. Unplug and replug the pedal, then test it.");
         }
         catch (Exception ex)
         {
             Log($"Write failed: {ex.Message}");
+        }
+        finally
+        {
+            SetBusy(false);
         }
     }
 
@@ -198,16 +205,18 @@ internal sealed class MainForm : Form
         _writeButton.Enabled = _selectedDevice is not null && _pendingBinding is not null;
     }
 
-    private void ReadSlots()
+    private async void ReadSlots()
     {
-        if (_selectedDevice is null)
+        var selectedDevice = _selectedDevice;
+        if (selectedDevice is null)
         {
             return;
         }
 
         try
         {
-            foreach (var result in _selectedDevice.ReadSlots())
+            SetBusy(true);
+            foreach (var result in await Task.Run(selectedDevice.ReadSlots))
             {
                 Log(result);
             }
@@ -216,6 +225,18 @@ internal sealed class MainForm : Form
         {
             Log($"Read failed: {ex.Message}");
         }
+        finally
+        {
+            SetBusy(false);
+        }
+    }
+
+    private void SetBusy(bool isBusy)
+    {
+        _refreshButton.Enabled = !isBusy;
+        _readButton.Enabled = !isBusy && _selectedDevice is not null;
+        _captureButton.Enabled = !isBusy;
+        _writeButton.Enabled = !isBusy && _selectedDevice is not null && _pendingBinding is not null;
     }
 
     private void Log(string message)
