@@ -143,6 +143,13 @@ internal sealed class HidFootSwitchDevice
 
         foreach (var report in BuildCandidateReports(packet, caps.OutputReportByteLength))
         {
+            if (HidD_SetOutputReport(handle, report.Buffer, report.Buffer.Length))
+            {
+                return $"HidD_SetOutputReport/{report.Label}";
+            }
+
+            failures.Add($"HidD_SetOutputReport/{report.Label}: {FormatLastError()}");
+
             var ok = WriteFile(handle, report.Buffer, report.Buffer.Length, out var written, IntPtr.Zero);
             if (ok && written == report.Buffer.Length)
             {
@@ -150,13 +157,6 @@ internal sealed class HidFootSwitchDevice
             }
 
             failures.Add($"WriteFile/{report.Label}: {FormatLastError()} wrote {written}/{report.Buffer.Length} bytes");
-
-            if (HidD_SetOutputReport(handle, report.Buffer, report.Buffer.Length))
-            {
-                return $"HidD_SetOutputReport/{report.Label}";
-            }
-
-            failures.Add($"HidD_SetOutputReport/{report.Label}: {FormatLastError()}");
         }
 
         foreach (var report in BuildCandidateReports(packet, caps.FeatureReportByteLength))
