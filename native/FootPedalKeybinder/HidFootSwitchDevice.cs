@@ -83,7 +83,7 @@ internal sealed class HidFootSwitchDevice
         {
             results.Add($"slot {slot} header: " + WritePacket(handle, [ReportId, 0x81, 0x08, slot, 0x00, 0x00, 0x00, 0x00]));
             Thread.Sleep(30);
-            results.Add($"slot {slot} data: " + WritePacket(handle, [ReportId, 0x08, 0x01, binding.Modifier, binding.Usage, 0x00, 0x00, 0x00]));
+            results.Add($"slot {slot} data: " + WritePacket(handle, [0x08, 0x01, binding.Modifier, binding.Usage, 0x00, 0x00, 0x00, 0x00]));
             Thread.Sleep(30);
         }
 
