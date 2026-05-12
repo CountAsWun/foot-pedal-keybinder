@@ -113,11 +113,35 @@ internal sealed class HidFootSwitchDevice
             throw new ArgumentException("Footswitch packets must be exactly 8 bytes.", nameof(packet));
         }
 
+        var failures = new List<string>();
         var ok = WriteFile(handle, packet, packet.Length, out var written, IntPtr.Zero);
-        if (!ok || written != packet.Length)
+        if (ok && written == packet.Length)
         {
-            throw new Win32Exception(Marshal.GetLastWin32Error(), "Unable to write the HID report.");
+            return;
         }
+
+        failures.Add($"WriteFile: {FormatLastError()} wrote {written}/{packet.Length} bytes");
+
+        if (HidD_SetOutputReport(handle, packet, packet.Length))
+        {
+            return;
+        }
+
+        failures.Add($"HidD_SetOutputReport: {FormatLastError()}");
+
+        if (HidD_SetFeature(handle, packet, packet.Length))
+        {
+            return;
+        }
+
+        failures.Add($"HidD_SetFeature: {FormatLastError()}");
+        throw new InvalidOperationException("Unable to write the HID report. " + string.Join("; ", failures));
+    }
+
+    private static string FormatLastError()
+    {
+        var error = Marshal.GetLastWin32Error();
+        return error == 0 ? "no Windows error code returned" : $"{error} ({new Win32Exception(error).Message})";
     }
 
     private static string GetDevicePath(IntPtr infoSet, SpDeviceInterfaceData interfaceData)
@@ -201,6 +225,18 @@ internal sealed class HidFootSwitchDevice
         int bytesToWrite,
         out int bytesWritten,
         IntPtr overlapped);
+
+    [DllImport("hid.dll", SetLastError = true)]
+    private static extern bool HidD_SetOutputReport(
+        SafeFileHandle hidDeviceObject,
+        byte[] reportBuffer,
+        int reportBufferLength);
+
+    [DllImport("hid.dll", SetLastError = true)]
+    private static extern bool HidD_SetFeature(
+        SafeFileHandle hidDeviceObject,
+        byte[] reportBuffer,
+        int reportBufferLength);
 
     [StructLayout(LayoutKind.Sequential)]
     private struct SpDeviceInterfaceData
