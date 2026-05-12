@@ -76,4 +76,34 @@ internal static class KeyBindings
         binding = new KeyBinding(string.Join("+", labels), modifier, mapped.Usage);
         return true;
     }
+
+    public static string DescribeUsage(byte modifier, byte usage)
+    {
+        var keyName = UsageByKey.Values.FirstOrDefault(value => value.Usage == usage).Display;
+        if (string.IsNullOrWhiteSpace(keyName))
+        {
+            keyName = usage == 0 ? "none" : $"usage 0x{usage:X2}";
+        }
+
+        var labels = new List<string>();
+        if ((modifier & 0x01) != 0)
+        {
+            labels.Add("Ctrl");
+        }
+        if ((modifier & 0x02) != 0)
+        {
+            labels.Add("Shift");
+        }
+        if ((modifier & 0x04) != 0)
+        {
+            labels.Add("Alt");
+        }
+        if ((modifier & 0x08) != 0)
+        {
+            labels.Add("Win");
+        }
+
+        labels.Add(keyName);
+        return string.Join("+", labels);
+    }
 }
