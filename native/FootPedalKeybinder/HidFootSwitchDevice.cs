@@ -113,29 +113,80 @@ internal sealed class HidFootSwitchDevice
             throw new ArgumentException("Footswitch packets must be exactly 8 bytes.", nameof(packet));
         }
 
+        var caps = GetCaps(handle);
         var failures = new List<string>();
-        var ok = WriteFile(handle, packet, packet.Length, out var written, IntPtr.Zero);
-        if (ok && written == packet.Length)
+
+        foreach (var report in BuildCandidateReports(packet, caps.OutputReportByteLength))
         {
-            return;
+            var ok = WriteFile(handle, report.Buffer, report.Buffer.Length, out var written, IntPtr.Zero);
+            if (ok && written == report.Buffer.Length)
+            {
+                return;
+            }
+
+            failures.Add($"WriteFile/{report.Label}: {FormatLastError()} wrote {written}/{report.Buffer.Length} bytes");
+
+            if (HidD_SetOutputReport(handle, report.Buffer, report.Buffer.Length))
+            {
+                return;
+            }
+
+            failures.Add($"HidD_SetOutputReport/{report.Label}: {FormatLastError()}");
         }
 
-        failures.Add($"WriteFile: {FormatLastError()} wrote {written}/{packet.Length} bytes");
-
-        if (HidD_SetOutputReport(handle, packet, packet.Length))
+        foreach (var report in BuildCandidateReports(packet, caps.FeatureReportByteLength))
         {
-            return;
+            if (HidD_SetFeature(handle, report.Buffer, report.Buffer.Length))
+            {
+                return;
+            }
+
+            failures.Add($"HidD_SetFeature/{report.Label}: {FormatLastError()}");
         }
 
-        failures.Add($"HidD_SetOutputReport: {FormatLastError()}");
-
-        if (HidD_SetFeature(handle, packet, packet.Length))
-        {
-            return;
-        }
-
-        failures.Add($"HidD_SetFeature: {FormatLastError()}");
         throw new InvalidOperationException("Unable to write the HID report. " + string.Join("; ", failures));
+    }
+
+    private static HidCaps GetCaps(SafeFileHandle handle)
+    {
+        if (!HidD_GetPreparsedData(handle, out var preparsedData))
+        {
+            throw new Win32Exception(Marshal.GetLastWin32Error(), "Unable to get HID preparsed data.");
+        }
+
+        try
+        {
+            var result = HidP_GetCaps(preparsedData, out var caps);
+            if (result != 0x00110000)
+            {
+                throw new InvalidOperationException($"Unable to read HID capabilities. HidP_GetCaps returned 0x{result:X8}.");
+            }
+
+            return caps;
+        }
+        finally
+        {
+            HidD_FreePreparsedData(preparsedData);
+        }
+    }
+
+    private static IEnumerable<(string Label, byte[] Buffer)> BuildCandidateReports(byte[] packet, ushort reportLength)
+    {
+        if (reportLength < packet.Length)
+        {
+            yield break;
+        }
+
+        var raw = new byte[reportLength];
+        Array.Copy(packet, raw, packet.Length);
+        yield return ($"raw length {reportLength}", raw);
+
+        if (reportLength >= packet.Length + 1)
+        {
+            var zeroPrefixed = new byte[reportLength];
+            Array.Copy(packet, 0, zeroPrefixed, 1, packet.Length);
+            yield return ($"zero-prefixed length {reportLength}", zeroPrefixed);
+        }
     }
 
     private static string FormatLastError()
@@ -238,6 +289,17 @@ internal sealed class HidFootSwitchDevice
         byte[] reportBuffer,
         int reportBufferLength);
 
+    [DllImport("hid.dll", SetLastError = true)]
+    private static extern bool HidD_GetPreparsedData(
+        SafeFileHandle hidDeviceObject,
+        out IntPtr preparsedData);
+
+    [DllImport("hid.dll", SetLastError = true)]
+    private static extern bool HidD_FreePreparsedData(IntPtr preparsedData);
+
+    [DllImport("hid.dll")]
+    private static extern int HidP_GetCaps(IntPtr preparsedData, out HidCaps capabilities);
+
     [StructLayout(LayoutKind.Sequential)]
     private struct SpDeviceInterfaceData
     {
@@ -245,5 +307,27 @@ internal sealed class HidFootSwitchDevice
         public Guid InterfaceClassGuid;
         public uint Flags;
         public IntPtr Reserved;
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
+    private struct HidCaps
+    {
+        public ushort Usage;
+        public ushort UsagePage;
+        public ushort InputReportByteLength;
+        public ushort OutputReportByteLength;
+        public ushort FeatureReportByteLength;
+        [MarshalAs(UnmanagedType.ByValArray, SizeConst = 17)]
+        public ushort[] Reserved;
+        public ushort NumberLinkCollectionNodes;
+        public ushort NumberInputButtonCaps;
+        public ushort NumberInputValueCaps;
+        public ushort NumberInputDataIndices;
+        public ushort NumberOutputButtonCaps;
+        public ushort NumberOutputValueCaps;
+        public ushort NumberOutputDataIndices;
+        public ushort NumberFeatureButtonCaps;
+        public ushort NumberFeatureValueCaps;
+        public ushort NumberFeatureDataIndices;
     }
 }
