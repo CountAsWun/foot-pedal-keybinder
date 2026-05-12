@@ -72,19 +72,22 @@ internal sealed class HidFootSwitchDevice
         }
     }
 
-    public void WriteAllSlots(KeyBinding binding)
+    public IReadOnlyList<string> WriteAllSlots(KeyBinding binding)
     {
+        var results = new List<string>();
         using var handle = Open();
-        WritePacket(handle, [ReportId, 0x80, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00]);
+        results.Add("start: " + WritePacket(handle, [ReportId, 0x80, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00]));
         Thread.Sleep(1000);
 
         for (byte slot = 1; slot <= 3; slot++)
         {
-            WritePacket(handle, [ReportId, 0x81, 0x08, slot, 0x00, 0x00, 0x00, 0x00]);
+            results.Add($"slot {slot} header: " + WritePacket(handle, [ReportId, 0x81, 0x08, slot, 0x00, 0x00, 0x00, 0x00]));
             Thread.Sleep(30);
-            WritePacket(handle, [ReportId, 0x08, 0x01, binding.Modifier, binding.Usage, 0x00, 0x00, 0x00]);
+            results.Add($"slot {slot} data: " + WritePacket(handle, [ReportId, 0x08, 0x01, binding.Modifier, binding.Usage, 0x00, 0x00, 0x00]));
             Thread.Sleep(30);
         }
+
+        return results;
     }
 
     private SafeFileHandle Open()
@@ -106,7 +109,7 @@ internal sealed class HidFootSwitchDevice
         return handle;
     }
 
-    private static void WritePacket(SafeFileHandle handle, byte[] packet)
+    private static string WritePacket(SafeFileHandle handle, byte[] packet)
     {
         if (packet.Length != 8)
         {
@@ -121,14 +124,14 @@ internal sealed class HidFootSwitchDevice
             var ok = WriteFile(handle, report.Buffer, report.Buffer.Length, out var written, IntPtr.Zero);
             if (ok && written == report.Buffer.Length)
             {
-                return;
+                return $"WriteFile/{report.Label}";
             }
 
             failures.Add($"WriteFile/{report.Label}: {FormatLastError()} wrote {written}/{report.Buffer.Length} bytes");
 
             if (HidD_SetOutputReport(handle, report.Buffer, report.Buffer.Length))
             {
-                return;
+                return $"HidD_SetOutputReport/{report.Label}";
             }
 
             failures.Add($"HidD_SetOutputReport/{report.Label}: {FormatLastError()}");
@@ -138,7 +141,7 @@ internal sealed class HidFootSwitchDevice
         {
             if (HidD_SetFeature(handle, report.Buffer, report.Buffer.Length))
             {
-                return;
+                return $"HidD_SetFeature/{report.Label}";
             }
 
             failures.Add($"HidD_SetFeature/{report.Label}: {FormatLastError()}");
@@ -177,16 +180,16 @@ internal sealed class HidFootSwitchDevice
             yield break;
         }
 
-        var raw = new byte[reportLength];
-        Array.Copy(packet, raw, packet.Length);
-        yield return ($"raw length {reportLength}", raw);
-
         if (reportLength >= packet.Length + 1)
         {
             var zeroPrefixed = new byte[reportLength];
             Array.Copy(packet, 0, zeroPrefixed, 1, packet.Length);
             yield return ($"zero-prefixed length {reportLength}", zeroPrefixed);
         }
+
+        var raw = new byte[reportLength];
+        Array.Copy(packet, raw, packet.Length);
+        yield return ($"raw length {reportLength}", raw);
     }
 
     private static string FormatLastError()
