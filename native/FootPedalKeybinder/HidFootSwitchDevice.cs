@@ -217,13 +217,21 @@ internal sealed class HidFootSwitchDevice
     private static byte[] ReadPacket(SafeFileHandle handle)
     {
         var caps = GetCaps(handle);
-        var buffer = new byte[Math.Max(caps.InputReportByteLength, (ushort)8)];
-        if (!ReadFile(handle, buffer, buffer.Length, out var read, IntPtr.Zero))
+        var failures = new List<string>();
+
+        foreach (var reportId in new byte[] { 0x00, ReportId })
         {
-            throw new Win32Exception(Marshal.GetLastWin32Error(), "Unable to read the HID report.");
+            var buffer = new byte[Math.Max(caps.InputReportByteLength, (ushort)8)];
+            buffer[0] = reportId;
+            if (HidD_GetInputReport(handle, buffer, buffer.Length))
+            {
+                return buffer;
+            }
+
+            failures.Add($"HidD_GetInputReport/report 0x{reportId:X2}: {FormatLastError()}");
         }
 
-        return buffer.Take(read).ToArray();
+        throw new InvalidOperationException("Unable to read the HID report. " + string.Join("; ", failures));
     }
 
     private static byte[] NormalizeResponse(byte[] response)
@@ -345,6 +353,12 @@ internal sealed class HidFootSwitchDevice
 
     [DllImport("hid.dll", SetLastError = true)]
     private static extern bool HidD_SetFeature(
+        SafeFileHandle hidDeviceObject,
+        byte[] reportBuffer,
+        int reportBufferLength);
+
+    [DllImport("hid.dll", SetLastError = true)]
+    private static extern bool HidD_GetInputReport(
         SafeFileHandle hidDeviceObject,
         byte[] reportBuffer,
         int reportBufferLength);
